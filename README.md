@@ -5,6 +5,21 @@ A modular robotics platform built around a Steam Deck running ROS 2 and Foxglove
 The goal is to build the software infrastructure once and then make individual robots relatively simple to integrate.
 
 ---
+┌─────────────────────────────────────────────────────────────┐
+│ PROJECT ROADMAP                                             │
+├────┬────────────────────────────────────────────────────────┤
+│ 01 │ ROS Middleware                              [x]        │
+│ 02 │ Foxglove Steam Deck UI                      [x]        │
+│ 03 │ Simple ESP32 Bot                            [x]        │
+│ 04 │ ESP32 Networking                            [ ]        │
+│ 05 │ OTA Firmware Updates                        [ ]        │
+│ 06 │ Motor Control                               [ ]        │
+│ 07 │ ROS 2 Robot Integration                     [ ]        │
+│ 08 │ Foxglove Robot Control                      [ ]        │
+│ 09 │ Robot Feedback / Odometry                   [ ]        │
+│ 10 │ MQTT ↔ ROS 2 Bridge                         [ ]        │
+│ 11 │ Multi-Robot Platform                        [ ]        │
+└────┴────────────────────────────────────────────────────────┘
 
 ## 1. Current Architecture
 
