@@ -1,8 +1,8 @@
 # Steam Deck Robotics Platform
 
-A modular robotics platform built around a Steam Deck running ROS 2 and Foxglove, with ESP32-based robots as distributed hardware endpoints.
+A modular robotics platform built around a Steam Deck running ROS 2 and Foxglove, with ESP32-based robots acting as the hardware endpoints.
 
-The goal is to build the software infrastructure once and then make individual robots relatively simple to integrate.
+The idea is to build the common infrastructure once, then make adding another robot mostly a matter of implementing its hardware interface instead of rebuilding the whole control system.
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -21,61 +21,66 @@ The goal is to build the software infrastructure once and then make individual r
 │ 11 │ Multi-Robot Platform                        [ ]        │
 └────┴────────────────────────────────────────────────────────┘
 ```
-## 1. Current Architecture
 
-The current control/visualization stack is:
+## Architecture
+
+The Steam Deck is the central robotics computer. Foxglove is used for visualization and operator control, while ROS 2 handles communication with the robots.
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │                        STEAM DECK                           │
 │                                                             │
-│  KDE Plasma / Wayland                                      │
-│                                                             │
-│  ┌─────────────────┐                                       │
-│  │ Foxglove Studio │                                       │
-│  └────────┬────────┘                                       │
-│           │                                                 │
-│  ┌────────▼────────┐                                       │
-│  │ Foxglove Bridge │                                       │
-│  └────────┬────────┘                                       │
-│           │                                                 │
-│  ┌────────▼────────┐                                       │
-│  │      ROS 2      │                                       │
-│  └────────┬────────┘                                       │
-│           │                                                 │
-└───────────┼─────────────────────────────────────────────────┘
-            │ Network
-            ▼
-       Robot / ESP32
+│  Foxglove Studio                                            │
+│         │                                                   │
+│         ▼                                                   │
+│  Foxglove Bridge                                            │
+│         │                                                   │
+│         ▼                                                   │
+│       ROS 2                                                 │
+│         │                                                   │
+└─────────┼───────────────────────────────────────────────────┘
+          │ Network
+          ▼
+     ESP32 Robot
+          │
+          ▼
+     Motor Drivers
+          │
+          ▼
+        Motors
 ```
 
-ROS 2 provides the robot communication layer.
+The important part is that Foxglove isn't talking directly to the ESP32. It talks to ROS 2 through the Foxglove Bridge, and the robot exposes its own ROS interfaces.
 
-Foxglove provides the human-facing visualization and control interface.
+For the first robot, the eventual control path is:
 
-The Foxglove Bridge connects Foxglove to the ROS 2 graph.
+```text
+Foxglove
+    ↓
+Foxglove Bridge
+    ↓
+ROS 2
+    ↓
+/cmd_vel
+    ↓
+ESP32
+    ↓
+Motor Drivers
+    ↓
+Motors
+```
+
+`/cmd_vel` is just a ROS 2 topic containing velocity commands. It isn't another service or bridge.
 
 ---
 
-# 2. Steam Deck Setup
+## Steam Deck
 
-The Steam Deck is currently running:
+The Steam Deck is currently running KDE Plasma on Wayland with ROS 2, Foxglove Studio, and the Foxglove Bridge.
 
-* KDE Plasma
-* Wayland
-* ROS 2 environment
-* Foxglove Studio
-* Foxglove Bridge
+Foxglove is installed in a Distrobox container named `foxglove`.
 
-## Foxglove
-
-Foxglove is installed in a Distrobox container named:
-
-```text
-foxglove
-```
-
-The Foxglove binary is:
+The main executable is:
 
 ```text
 /opt/Foxglove/foxglove-studio
@@ -87,100 +92,51 @@ The working desktop launcher is:
 ~/.local/share/applications/foxglove-foxglove-studio.desktop
 ```
 
-It launches:
+It launches Foxglove through Distrobox:
 
 ```bash
 /usr/bin/distrobox-enter -n foxglove -- /opt/Foxglove/foxglove-studio --foreground %U
 ```
 
-A custom launcher also exists:
+A separate launcher at:
 
 ```text
 ~/.local/bin/foxglove-steamdeck.sh
 ```
 
-It explicitly configures the Wayland environment before launching Foxglove.
+sets the required Wayland environment before starting Foxglove.
 
-## Foxglove Bridge
+### Foxglove Bridge
 
-The bridge is configured as a user systemd service:
+The ROS 2 bridge runs as a user systemd service:
 
 ```text
 foxglove-bridge.service
 ```
 
-It can be started with:
+It can currently be started with:
 
 ```bash
 systemctl --user start foxglove-bridge.service
 ```
 
-The intention is for the bridge to become part of the normal robotics environment rather than requiring manual startup every time.
+The goal is for this to become part of the normal robotics environment rather than something that has to be manually started every time.
 
 ---
 
-# 3. ROS 2 / Foxglove Relationship
+## First Robot
 
-Foxglove does not directly control the robot hardware.
-
-The relationship is:
-
-```text
-Foxglove
-    ↓
-Foxglove Bridge
-    ↓
-ROS 2
-    ↓
-Robot
-```
-
-ROS 2 topics provide the actual robot interfaces.
-
-For example:
-
-```text
-/cmd_vel
-/odom
-/tf
-/scan
-/joint_states
-```
-
-depending on the capabilities of the individual robot.
-
-`/cmd_vel` is simply a ROS 2 topic carrying velocity commands. It is **not a separate bridge or service**.
-
-For the first mobile robot:
-
-```text
-Foxglove
-    ↓
-Foxglove Bridge
-    ↓
-ROS 2 /cmd_vel
-    ↓
-ESP32
-    ↓
-Motor controller
-    ↓
-Motors
-```
-
----
-
-# 4. First Robot
-
-The first robot is an ESP32-based four-wheel differential-drive robot.
+The first robot is a four-wheel differential-drive platform built around an ESP32.
 
 Hardware:
 
 * ESP32
 * 2 × L298N motor drivers
 * 4 × yellow DC gear motors
-* 2 motors per L298N
 
-Current motor GPIO mapping:
+Each L298N controls two motors.
+
+Current GPIO mapping:
 
 ```cpp
 MotorPins motors[4] = {
@@ -190,8 +146,6 @@ MotorPins motors[4] = {
     /* M4 RR (Board B, IN3/IN4) */ {23, 25},
 };
 ```
-
-Logical wheel layout:
 
 ```text
              FRONT
@@ -204,247 +158,169 @@ Logical wheel layout:
              REAR
 ```
 
-The ESP32 will ultimately translate ROS velocity commands into left/right motor commands.
+The ESP32 will eventually take velocity commands from ROS 2 and turn them into the appropriate left and right motor outputs.
 
 ---
 
-# 5. ESP32 Development Environment
+## ESP32 Firmware
 
-The ESP32 will be programmed from a normal computer.
-
-**The development computer does not need ROS 2 installed.**
-
-The planned firmware environment is:
+The firmware will be developed with VS Code and PlatformIO using the Arduino framework.
 
 ```text
 VS Code
-    ↓
+   ↓
 PlatformIO
-    ↓
+   ↓
 Arduino framework
-    ↓
+   ↓
 ESP32
 ```
 
-PlatformIO will handle:
+The development computer only needs to handle firmware development. It does **not** need ROS 2 installed.
 
-* building firmware
-* dependency management
-* board configuration
-* USB flashing
-* serial monitoring
-* OTA firmware deployment
-* reproducible project configuration
+PlatformIO will handle the build environment, dependencies, board configuration, serial monitoring, USB flashing, and eventually OTA updates.
 
-The Arduino framework provides the familiar ESP32 programming model while PlatformIO manages the actual project.
+The firmware is intended to grow into a small robot platform rather than remain a single-purpose motor test program. Planned features include Wi-Fi configuration, a fallback access point, OTA updates, motor control, diagnostics, and the ROS interface.
 
 ---
 
-# 6. ESP32 Networking
+## Networking and Recovery
 
-The ESP32 should remain manageable even when it cannot reach the normal Wi-Fi network.
+The robot shouldn't become inaccessible just because the normal Wi-Fi network isn't available.
 
-The intended behavior is:
+The intended startup behavior is:
 
 ```text
-                    ESP32 BOOT
-                        │
-                        ▼
-                Try configured Wi-Fi
-                        │
-              ┌─────────┴─────────┐
-              │                   │
-           SUCCESS              FAILURE
-              │                   │
-              ▼                   ▼
-        Normal Wi-Fi          Start fallback AP
-              │                   │
-              │             Robot-XXXX
-              │                   │
-              └─────────┬─────────┘
-                        ▼
-                 Management / OTA
+ESP32 boots
+    │
+    ▼
+Try configured Wi-Fi
+    │
+    ├── Connected ──► Normal operation
+    │
+    └── Failed ─────► Start Robot-XXXX AP
+                            │
+                            ▼
+                       Management / OTA
 ```
 
-This means the robot has a recovery path that does not depend on the home network.
+The fallback AP will provide a way to configure the robot and recover it without relying on the rest of the network.
 
-The fallback access point will eventually provide a management interface for things such as:
+The management interface will eventually provide things such as:
 
-* firmware updates
 * Wi-Fi configuration
-* robot status
-* rebooting
-* firmware version
-* diagnostics
-* potentially manual motor testing
+* Firmware updates
+* Firmware version
+* Robot status
+* Reboot
+* Diagnostics
+* Manual motor testing
 
-OTA management should remain independent of ROS 2.
+OTA is intentionally separate from ROS 2. If the ROS software has a problem, the robot should still be reachable and recoverable.
 
-If ROS 2 is broken, the robot should still be recoverable.
+USB will remain the lowest-level recovery method.
 
 ---
 
-# 7. Development Roadmap
+## Bringing Up the First Robot
 
-The first robot will be developed incrementally.
+The robot will be built up in stages so that each part can be tested before adding the next one.
 
-## Phase 1 — ESP32 Bring-Up
+### 1. ESP32
 
-Connect the ESP32 to the development computer over USB.
-
-Verify:
+Start with USB.
 
 ```text
-ESP32 powers on
-        ↓
-Firmware flashes
-        ↓
-Serial output works
-        ↓
-ESP32 boots successfully
+Computer → ESP32
 ```
 
-No ROS or motors yet.
+Verify that firmware can be flashed, the board boots reliably, and serial diagnostics work.
 
----
+### 2. Networking
 
-## Phase 2 — Networking
-
-Implement:
+Add normal Wi-Fi and the fallback AP.
 
 ```text
 ESP32
- ├── Connect to configured Wi-Fi
- └── Fall back to AP if connection fails
+ ├── Normal Wi-Fi
+ └── Fallback AP
 ```
 
-Verify that the ESP32 can be reached over the network.
+At this point the robot should be reachable over the network without involving ROS 2.
 
----
+### 3. OTA
 
-## Phase 3 — OTA
+Once networking works, move firmware updates from USB to Wi-Fi.
 
-Implement firmware updates over the network.
+USB stays available for recovery.
 
-Target workflow:
+### 4. Motors
+
+Test all four motor channels individually.
 
 ```text
-First installation:
-
-Computer ──USB──> ESP32
-
-
-Normal development:
-
-Computer ──Wi-Fi──> ESP32
-                    │
-                    └── OTA firmware update
-
-
-No normal Wi-Fi:
-
-Computer ──Robot AP──> ESP32
-                       │
-                       └── OTA firmware update
+FL → forward / reverse / stop
+FR → forward / reverse / stop
+RL → forward / reverse / stop
+RR → forward / reverse / stop
 ```
 
-USB remains available as a recovery method.
+This is where wiring, GPIO assignments, motor direction, and the L298N configuration get verified.
 
----
+### 5. Differential Drive
 
-## Phase 4 — Motor Bring-Up
+Once the individual motors work, treat them as a single drive base.
 
-Before involving ROS 2, verify the physical motor system independently.
-
-Test each motor:
+A velocity command will be converted into left and right wheel speeds, which are then applied to the front and rear motors on each side.
 
 ```text
-FL forward
-FL reverse
-FL stop
-
-FR forward
-FR reverse
-FR stop
-
-RL forward
-RL reverse
-RL stop
-
-RR forward
-RR reverse
-RR stop
+             Command
+                │
+                ▼
+       Differential Drive
+          /           \
+         ▼             ▼
+     Left side      Right side
+       FL + RL        FR + RR
 ```
 
-This establishes the correct GPIO, motor-driver, wiring, and direction behavior.
+### 6. ROS 2
 
----
-
-## Phase 5 — Differential Drive
-
-Combine the four motors into a differential-drive base.
-
-Conceptually:
+The next step is connecting the ESP32 to the ROS 2 system running on the Steam Deck.
 
 ```text
-LEFT SIDE             RIGHT SIDE
-
-FL ─┐                  ┌─ FR
-    ├── LEFT           ├── RIGHT
-RL ─┘                  └─ RR
+Steam Deck
+    │
+   ROS 2
+    │
+ Network
+    │
+  ESP32
 ```
 
-A forward command should produce forward motion.
+The exact ESP32 ROS 2 interface will be chosen during implementation rather than locking the project into a solution before testing it.
 
-A turning command should produce opposing wheel velocities as appropriate.
+### 7. `/cmd_vel`
 
-Motor direction inversions will be handled in firmware according to the physical mounting of the motors.
-
----
-
-## Phase 6 — ESP32 ↔ ROS 2
-
-Add the ROS-compatible communication layer.
-
-The ESP32 becomes a networked ROS 2 robot endpoint:
-
-```text
-ROS 2
-  │
-  │ Network
-  ▼
-ESP32
-```
-
-The development computer still does not need ROS 2.
-
-ROS 2 lives on the robotics side of the architecture, primarily on the Steam Deck.
-
----
-
-## Phase 7 — `/cmd_vel`
-
-Connect ROS velocity commands to the differential-drive controller:
+Once the ROS interface is working, subscribe to `/cmd_vel` and feed those commands into the differential-drive controller.
 
 ```text
 /cmd_vel
     ↓
 ESP32 ROS interface
     ↓
-Differential-drive mixer
+Differential-drive controller
     ↓
-Left / Right velocity
+Left / Right motor commands
     ↓
-4 motor outputs
+4 motors
 ```
 
-At this point, ROS 2 can command the physical robot.
+This is the point where ROS 2 can actually drive the physical robot.
 
----
+### 8. Foxglove
 
-## Phase 8 — Foxglove Control
-
-Once `/cmd_vel` works through ROS 2, Foxglove becomes the high-level interface:
+Finally, put Foxglove at the front of the system.
 
 ```text
 Foxglove
@@ -462,37 +338,31 @@ L298N × 2
 4 motors
 ```
 
-This is the first complete end-to-end robotics pipeline.
+That gives us the first complete path from the operator interface to the hardware.
 
 ---
 
-# 8. Future Robot Feedback
+## Robot Feedback
 
-The initial robot can operate without odometry.
+The first version doesn't need encoders or odometry. The initial goal is simply reliable command and control.
 
-Later, encoders and sensors can be added.
+Once the basic robot works, sensors can be added without changing the overall architecture.
 
 For example:
 
 ```text
-                    ┌── /cmd_vel
-                    │
-Foxglove ↔ ROS 2 ↔ ESP32
-                    │
-                    ├── Motor control
-                    │
-                    ├── Encoders
-                    │      ↓
-                    │   Odometry
-                    │      ↓
-                    │   /odom
-                    │
-                    ├── IMU
-                    │
-                    └── Other sensors
+ESP32
+ ├── Motor control
+ ├── Wheel encoders
+ │       ↓
+ │     Odometry
+ │       ↓
+ │     /odom
+ ├── IMU
+ └── Other sensors
 ```
 
-Eventually the robot can expose:
+Depending on the hardware eventually added, the robot could expose interfaces such as:
 
 ```text
 /cmd_vel
@@ -504,15 +374,83 @@ Eventually the robot can expose:
 /camera/...
 ```
 
-as hardware is added.
+---
+
+## MQTT Integration
+
+MQTT comes later.
+
+It isn't needed to drive the first robot, and it shouldn't sit in the middle of the ROS 2 control path.
+
+Instead, a separate MQTT ↔ ROS 2 service will eventually connect the robotics system to the rest of the home network.
+
+```text
+                         ROS 2
+                    /      |      \
+                   /       |       \
+              Robot A   Robot B   ROS tools
+                             |
+                             |
+                      MQTT ↔ ROS 2
+                             |
+                            MQTT
+                             |
+               ┌─────────────┼─────────────┐
+               │             │             │
+        Home Assistant    ESPHome      Other systems
+```
+
+ROS 2 remains responsible for robotics. MQTT provides a convenient interface for systems that don't need to know anything about ROS.
 
 ---
 
-# 9. Future MQTT Integration
+## Repository Structure
 
-MQTT is **not part of the first robot's direct control path**.
+```text
+steam-deck-robotics/
+├── README.md
+├── docs/
+│   └── architecture-and-roadmap.md
+├── firmware/
+│   └── esp32-bot/
+├── ros2/
+└── mqtt-bridge/
+```
 
-The primary robotics path remains:
+The root README is intended to stay relatively short. Detailed setup notes, architecture decisions, and implementation details will live under `docs/`.
+
+---
+
+## Current Status
+
+The Steam Deck side of the platform is established:
+
+* ROS 2 environment is working
+* Foxglove Studio is installed and launching correctly
+* Foxglove Bridge is installed
+* Foxglove Bridge runs as a user systemd service
+* The first robot hardware has been selected and mapped
+* The basic ROS 2 → Foxglove architecture is defined
+
+The next step is deliberately back on the hardware side:
+
+1. Set up the ESP32 PlatformIO project
+2. Flash the first firmware over USB
+3. Get reliable serial diagnostics
+4. Add Wi-Fi
+5. Add the fallback AP
+6. Add OTA
+7. Bring up the four motor channels
+8. Implement differential drive
+9. Connect the robot to ROS 2
+10. Subscribe to `/cmd_vel`
+11. Drive the robot through Foxglove
+
+## First Real Milestone
+
+The first major milestone is not MQTT, autonomy, odometry, or multi-robot support.
+
+It's this:
 
 ```text
 Foxglove
@@ -521,190 +459,15 @@ Foxglove Bridge
     ↓
 ROS 2
     ↓
-Robot
-```
-
-A separate MQTT ↔ ROS 2 bridge/service will be developed later.
-
-Its purpose is to allow the broader home automation/network ecosystem to communicate with the robotics ecosystem without forcing every system to understand ROS 2.
-
-The eventual architecture can look like:
-
-```text
-                         ┌───────────────┐
-                         │    Foxglove   │
-                         └───────┬───────┘
-                                 │
-                         Foxglove Bridge
-                                 │
-                                 ▼
-                              ROS 2
-                                 │
-              ┌──────────────────┼──────────────────┐
-              │                  │                  │
-              ▼                  ▼                  ▼
-           Robot A            Robot B          ROS tools
-            ESP32              ESP32
-              │                  │
-              └──────────────────┘
-
-
-                    Separate integration layer
-
-                     MQTT ↔ ROS 2 Bridge
-                            │
-                            ▼
-                         MQTT
-                            │
-             ┌──────────────┼──────────────┐
-             ▼              ▼              ▼
-        Home Assistant   ESPHome       Other systems
-```
-
-The MQTT bridge should be treated as an **integration boundary**, not as a replacement for ROS 2.
-
-ROS 2 remains the native robotics communication layer.
-
-MQTT remains useful for broader IoT/home-automation communication.
-
----
-
-# 10. Overall Target Architecture
-
-The eventual system is intended to have several independent layers:
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                       USER INTERFACE                         │
-│                                                              │
-│                         Foxglove                             │
-└────────────────────────────┬─────────────────────────────────┘
-                             │
-                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│                     ROBOTICS INTERFACE                       │
-│                                                              │
-│                     Foxglove Bridge                          │
-└────────────────────────────┬─────────────────────────────────┘
-                             │
-                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│                        ROBOTICS CORE                         │
-│                                                              │
-│                           ROS 2                              │
-└───────────────┬────────────────────────────┬─────────────────┘
-                │                            │
-                ▼                            ▼
-          ESP32 Robots                 ROS 2 Applications
-                │
-                ▼
-       Hardware / Sensors
-
-
-                     SEPARATE INTEGRATION
-                             │
-                             ▼
-                       MQTT ↔ ROS 2
-                             │
-                             ▼
-                            MQTT
-                             │
-                             ▼
-                 Home Automation / IoT
-```
-
-The important architectural principle is that these layers remain loosely coupled.
-
-A robot should not require Foxglove to operate.
-
-ROS 2 should not depend on MQTT.
-
-MQTT devices should not need to understand ROS 2 internally.
-
-OTA should not depend on ROS 2.
-
-The Steam Deck provides the central robotics environment, while individual robots remain distributed hardware endpoints.
-
----
-
-# 11. Current Status
-
-### Completed
-
-* Steam Deck running KDE Plasma / Wayland
-* Foxglove installed in Distrobox
-* Working Foxglove desktop launcher
-* Custom Wayland launcher
-* Foxglove Bridge installed
-* Foxglove Bridge configured as a user systemd service
-* ROS 2 ↔ Foxglove architecture established
-* `/cmd_vel` identified as the intended initial robot command interface
-* Gaming Mode approach abandoned in favor of the working Desktop Mode launcher
-
-### Next
-
-1. Set up PlatformIO
-2. Identify and connect the ESP32
-3. Flash initial firmware over USB
-4. Establish serial diagnostics
-5. Implement Wi-Fi connection
-6. Implement fallback AP
-7. Establish OTA firmware updates
-8. Test the four L298N motor channels
-9. Build the differential-drive controller
-10. Establish ESP32 ↔ ROS 2 communication
-11. Connect `/cmd_vel`
-12. Drive the robot from Foxglove
-
-### Later
-
-* Wheel encoders
-* `/odom`
-* `/tf`
-* IMU
-* Additional sensors
-* Cameras
-* Autonomous behaviors
-* MQTT ↔ ROS 2 bridge
-* Integration with Home Assistant and the broader home automation system
-* Additional robots
-
----
-
-## The First Milestone
-
-The immediate goal is deliberately small:
-
-```text
-ESP32
-  ↓
-Wi-Fi
-  ↓
-ROS 2
-  ↓
 /cmd_vel
-  ↓
+    ↓
+ESP32
+    ↓
+L298N × 2
+    ↓
 4 motors
-  ↓
+    ↓
 Robot moves
 ```
 
-Then:
-
-```text
-Foxglove
-  ↓
-Foxglove Bridge
-  ↓
-ROS 2
-  ↓
-/cmd_vel
-  ↓
-ESP32
-  ↓
-L298N × 2
-  ↓
-4 motors
-```
-
-Once that works, the first robot is officially a ROS 2 robot rather than simply an ESP32 car.
+Once that works, the basic robotics platform has proven its end-to-end control path. Everything after that builds on something real.
