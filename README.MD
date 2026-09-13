@@ -44,7 +44,7 @@ The ESP32 handles the robot-side hardware and networking.
 │ 02 │ Foxglove Steam Deck UI                      [x]        │
 │ 03 │ Simple ESP32 Bot                            [x]        │
 │ 04 │ ESP32 Networking                            [x]        │
-│ 05 │ OTA Firmware Updates                        [ ]        │
+│ 05 │ OTA Firmware Updates                        [x]        │
 │ 06 │ Motor Control                               [ ]        │
 │ 07 │ ROS 2 Robot Integration                     [ ]        │
 │ 08 │ Foxglove Robot Control                      [ ]        │
