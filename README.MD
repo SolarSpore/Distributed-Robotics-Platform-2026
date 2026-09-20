@@ -7,32 +7,35 @@ The platform is being developed from the ground up, starting with a Wi-Fi-connec
 ## Architecture
 
 ```text
-                         STEAM DECK
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  Foxglove Studio                                            │
-│          │                                                  │
-│          ▼                                                  │
-│  Foxglove Bridge                                            │
-│          │                                                  │
-│          ▼                                                  │
-│        ROS 2                                                │
-│          │                                                  │
-└──────────┼──────────────────────────────────────────────────┘
-           │ Network
-           ▼
-      ESP32 Robot
-           │
-           ▼
-     Motor Controllers
-           │
-           ▼
-        DC Motors
+                              STEAM DECK
+┌──────────────────────────────────────────────────────────────────────┐
+│                                                                      │
+│  Gamepad                                                             │
+│     │                                                                │
+│     ▼                                                                │
+│  joy_node   (/joy)                                                   │
+│     │                                                                │
+│     ▼                                                                │
+│  teleop_twist_joy                                                    │
+│     │  /cmd_vel  ◄────►  Foxglove Bridge  ◄────►  Foxglove Studio    │
+│     ▼                    (display and debug)                         │
+│  cmd_vel_to_udp_node                                                 │
+│                                                                      │
+└─────┬────────────────────────────────────────────────────────────────┘
+      │  Wi-Fi (UDP)
+      ▼
+   ESP32 Robot
+      │
+      ▼
+ Motor Controllers
+      │
+      ▼
+   DC Motors
 ```
 
-ROS 2 serves as the robotics middleware, while Foxglove provides the primary visualization and operator interface.
+ROS 2 serves as the robotics middleware. The gamepad is the driving input: stock `joy` and `teleop_twist_joy` nodes produce `/cmd_vel`, and a small bridge node turns that into the robot's UDP protocol. Foxglove provides the visualization and debug interface (it can also publish to topics for testing) but is not the primary driving path.
 
-The ESP32 handles the robot-side hardware and networking.
+The ESP32 handles the robot-side hardware and networking. It never runs ROS. Its only contract with the control system is the UDP protocol described below.
 
 ## Project Roadmap
 
@@ -48,10 +51,12 @@ The ESP32 handles the robot-side hardware and networking.
 │ 06 │ Motor Control                               [x]        │
 │ 07 │ ROS 2 Robot Integration                     [x]        │
 │ 08 │ Foxglove debug Robot Controls               [x]        │
-| 09 | Backend Controller > ROS2/Arcade controls   [ ]        |
-│ 10 │ Robot Feedback / Odometry                   [ ]        │
-│ 10 │ MQTT ↔ ROS 2 Bridge                         [ ]        │
-│ 11 │ Multi-Robot Platform                        [ ]        │
+│ 09 │ Backend Controller > ROS2/Arcade controls   [x]        │
+│ 10 │ Tank-mode controller                        [ ]        │
+│ 11 │ Foxglove telemetry dashboard                [ ]        │
+│ 12 │ Robot Feedback / Odometry                   [ ]        │
+│ 13 │ MQTT ↔ ROS 2 Bridge                         [ ]        │
+│ 14 │ Multi-Robot Platform                        [ ]        │
 └────┴────────────────────────────────────────────────────────┘
 ```
 
@@ -69,28 +74,44 @@ The first robot is a four-wheel differential-drive platform built around an ESP3
 
 ### Motor Mapping
 
-| Wheel       | Controller        | GPIO         |
-| ----------- | ----------------- | ------------ |
-| Front Left  | L298N A / IN1-IN2 | GPIO 26 / 27 |
-| Front Right | L298N A / IN3-IN4 | GPIO 18 / 19 |
-| Rear Left   | L298N B / IN1-IN2 | GPIO 21 / 22 |
-| Rear Right  | L298N B / IN3-IN4 | GPIO 23 / 25 |
+| Wheel       | GPIO A / GPIO B |
+| ----------- | --------------- |
+| Front Left  | 23 / 25         |
+| Front Right | 26 / 27         |
+| Rear Left   | 21 / 22         |
+| Rear Right  | 18 / 19         |
 
-The robot will initially be controlled through ROS 2 using `/cmd_vel`.
+Verified with a one-wheel-at-a-time test over raw UDP. Wiring, power, and firmware details live in the robot's own README (`firmware/esp32-bot/README.md`).
+
+The robot is controlled through ROS 2 using `/cmd_vel`, driven from a Steam Deck gamepad.
+
+## Robot Interface (UDP)
+
+Every robot in the platform talks to the control system through a small network protocol, so the firmware and the ROS 2 side stay independent.
+
+| Item | Value |
+|---|---|
+| Transport | UDP, port `4210` |
+| Payload | `"FL,FR,RL,RR"`, each wheel `-255..255` |
+| Failsafe | Robot stops all motors after 0.5 s without a valid packet |
+
+**Only one sender should transmit to a robot at a time.** Competing senders (for example a test node sending idle stop packets alongside the drive bridge) interleave their commands and show up as motor stutter.
 
 ## Firmware
 
-The ESP32 firmware is being developed with **PlatformIO using the Arduino framework**.
+The ESP32 firmware is developed with **PlatformIO using the Arduino framework**.
 
-The firmware is intended to provide:
+Currently implemented:
 
-* Motor control
-* Wi-Fi configuration
-* Fallback access point
+* UDP motor control with a 500 ms failsafe
+* Wi-Fi configuration with fallback access point
+* mDNS hostname
 * OTA firmware updates
+
+Planned:
+
 * Web-based management
-* ROS-compatible communication
-* Future sensor and encoder support
+* Sensor and encoder support (for `/odom` and other feedback)
 
 OTA is intentionally designed to remain independent of ROS 2 so the robot can still be recovered and updated if the robotics software stack is unavailable.
 
@@ -98,23 +119,84 @@ OTA is intentionally designed to remain independent of ROS 2 so the robot can st
 
 ROS 2 provides the robotics middleware between the operator interface and the robot.
 
-The initial control path is:
+The current control path is:
 
 ```text
-Foxglove
+Steam Deck gamepad
     ↓
-Foxglove Bridge
+joy_node          (/joy)
     ↓
-ROS 2
+teleop_twist_joy  (/cmd_vel)
     ↓
-/cmd_vel
-    ↓
+cmd_vel_to_udp_node
+    ↓  UDP "FL,FR,RL,RR" @ 20 Hz
 ESP32
     ↓
 Motor Drivers
     ↓
 Motors
 ```
+
+Foxglove Studio connects through `foxglove_bridge` to the same ROS topics for display and debugging.
+
+### Packages
+
+| Package | Purpose |
+|---|---|
+| `rover_teleop` | Launch file and Steam Deck config for `joy_node` + `teleop_twist_joy` |
+| `rover_udp_bridge` | `cmd_vel_to_udp_node` (Twist → wheel PWM → UDP) and `raw_wheel_udp_node` (direct wheel testing) |
+| `rover_description` | URDF/xacro stub staged for a possible future `ros2_control` migration. Not wired to anything |
+
+`ros2_control` / `diff_drive_controller` is intentionally deferred. Without wheel encoders it would run open-loop and add nothing over the current bridge. It becomes worthwhile once encoders and odometry exist.
+
+### Operator controls (Steam Deck, arcade mode)
+
+| Input | Action |
+|---|---|
+| **L1** (hold) | Deadman switch. The robot only drives while held |
+| Left stick up / down | Forward / reverse |
+| Left stick left / right | Turn left / right (pivots with no forward input) |
+| **R1** (hold with L1) | Turbo |
+
+Releasing L1 stops the robot. Tank mode (hold A, left stick = left wheels, right stick = right wheels) is planned.
+
+Steam Deck indices, from calibration: A=0, B=1, X=2, Y=3, L1=9, R1=10, L2 = axis 4, R2 = axis 5. L2 and R2 are analog-only with no digital button, so the deadman is L1. The Steam Gamepad controller template must be applied so the Deck's controls act as a gamepad rather than a mouse.
+
+### Bridge behavior and settings
+
+`cmd_vel_to_udp_node` resends the last command at a fixed 20 Hz, sends zeros if no `/cmd_vel` arrives for 0.5 s, and sends a final stop when it exits.
+
+| Parameter | Value in use | Notes |
+|---|---|---|
+| `max_linear_speed` | 1.5 | m/s that maps to PWM 255. `cmd_vel_launch.py` defaults to 0.5, so override it |
+| `min_pwm` | 110 | Lowest PWM given to a non-zero command, which works around the L298N motor stall zone. Default 0 |
+| `wheel_separation` | 0.30 | Meters. Not yet measured on the real robot |
+
+`cmd_vel_launch.py` does not expose `min_pwm`, so the bridge is started with `ros2 run`:
+
+```bash
+ros2 run rover_udp_bridge cmd_vel_to_udp_node --ros-args -p max_linear_speed:=1.5 -p min_pwm:=110
+```
+
+Teleop scaling lives in `rover_teleop/config/steamdeck.config.yaml`: `scale_linear.x` 0.7 (turbo 1.5), `scale_angular.yaw` 4.0 for both normal and turbo, `joy_node` deadzone 0.1 and `autorepeat_rate` 20 Hz. The angular value is a tuning number, not real rad/s.
+
+### Running it
+
+On the Steam Deck, the **Rover Controls** desktop icon starts teleop, the bridge, and `foxglove_bridge` detached (logs in `~/Robotics/logs/`). **Stop Rover Controls** shuts them down. Manually, in a `pixi shell` with the workspace sourced, one command per terminal:
+
+```bash
+ros2 launch rover_teleop joy_teleop_launch.py
+ros2 run rover_udp_bridge cmd_vel_to_udp_node --ros-args -p max_linear_speed:=1.5 -p min_pwm:=110
+```
+
+Before starting the bridge, `pgrep -af "cmd_vel_to_udp_node|raw_wheel_udp_node"` should print nothing. Then Foxglove Studio connects to `ws://<deck-ip>:8765`.
+
+Environment notes:
+
+* ROS 2 Humble runs on the Steam Deck via Pixi/RoboStack (SteamOS has no native ROS).
+* Build packages with `colcon build --symlink-install` so edits to launch files and config take effect without rebuilding. When config seems ignored, check the installed copy under `install/<pkg>/share/`.
+* `joy_node` prints harmless `Unknown event type 1623/1624` messages (the Deck's gyro and trackpad reports).
+* Desktop launchers don't inherit the shell `PATH`, so launcher scripts use absolute paths (for example `/home/deck/.pixi/bin/pixi`).
 
 Future robot interfaces may include:
 
@@ -154,10 +236,16 @@ MQTT is not part of the initial robot control path. ROS 2 remains the native rob
 robotics-platform/
 ├── README.md
 ├── docs/
-│   └── architecture-and-roadmap.md
+│   ├── architecture-and-roadmap.md
+│   ├── changelog.md
+│   └── controls.txt
 ├── firmware/
 │   └── esp32-bot/
+│       └── README.md        # robot-specific: wiring, power, firmware, OTA
 ├── ros2/
+│   ├── rover_teleop/
+│   ├── rover_udp_bridge/
+│   └── rover_description/
 └── mqtt-bridge/
 ```
 
@@ -181,28 +269,23 @@ Operator Interface
 Higher-Level Integration
 ```
 
-This makes it possible to troubleshoot individual layers without requiring the entire system to be operational.
+This makes it possible to troubleshoot individual layers without requiring the entire system to be operational. Bring-up on the first robot followed this in practice: each wheel was verified alone over raw UDP before the ROS 2 bridge was involved, which is how a wiring-order mismatch and a competing sender were found.
 
 ## Current Status
 
-The ROS 2 middleware and Foxglove development environment are established on a Steam Deck running Linux.
+The full control path is working: a Steam Deck gamepad drives the first ESP32 robot through ROS 2 in arcade mode, with a one-click start/stop from the Deck desktop. Foxglove is connected for display and debugging.
 
-The next major milestone is bringing the first ESP32 robot onto the network and establishing the complete control path:
+Next milestones:
 
-```text
-Steam Deck
-    ↓
-Foxglove
-    ↓
-ROS 2
-    ↓
-ESP32
-    ↓
-L298N ×2
-    ↓
-4 × DC Motors
-```
+* Tank-mode controller
+* Foxglove telemetry dashboard
+* Encoders and odometry (which also unlock `ros2_control`)
+* MQTT ↔ ROS 2 bridge
 
 For the detailed architecture, implementation plan, and development phases, see:
 
 `docs/architecture-and-roadmap.md`
+
+For the robot itself (wiring, power notes, firmware, OTA), see:
+
+`firmware/esp32-bot/README.md`
