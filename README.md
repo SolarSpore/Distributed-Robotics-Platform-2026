@@ -1,172 +1,301 @@
 # Robotics Platform
 
-A modular robotics platform built around Linux, ROS 2, and open hardware.
+A modular ROS 2 robotics platform built around a Steam Deck as the central robot computer and ESP32-based robots as hardware endpoints.
 
-The platform provides a reusable architecture for building different robots while keeping robot-specific hardware and implementation details in the robot repository.
-
-The ESP32 mecanum rover is the current reference implementation of this platform. Its implementation is maintained separately from the platform itself.
+The current **ESP32 mecanum rover is the reference implementation**. The rover provides a working example of the platform while the ROS 2 interfaces and architectural patterns are intended to be reusable for future robots.
 
 ## Architecture
 
-The general architecture is:
+The platform separates robot behavior from hardware implementation.
 
-    Operator Interface
-            |
-            v
-         ROS 2
-            |
-       +----+----+
-       |         |
-       v         v
-     Drive   Peripherals
-     Control   / Sensors
-       |         |
-       v         v
-    Hardware / Network
-            |
-            v
-          Robot
+```mermaid
+flowchart LR
+    subgraph DECK["STEAM DECK / ROS 2"]
+        GAMEPAD["Gamepad"]
+        CONTROL["rover_control_node"]
+        MOTOR["rover_motor_bridge"]
+        PERIPH["rover_peripherals_bridge"]
 
-The platform separates robot responsibilities into independent layers:
+        GAMEPAD -->|"/joy"| CONTROL
+        CONTROL -->|"/cmd_vel"| MOTOR
+        CONTROL -->|"head/angle<br/>buzzer/beep"| PERIPH
+    end
 
-- Control — operator input and /cmd_vel
-- Drive — conversion of motion commands into hardware commands
-- Peripherals — non-drive actuators and sensors
-- Robot hardware — firmware, motor controllers, sensors, and physical hardware
-- Higher-level behavior — autonomy and future robot behaviors
+    subgraph ROBOT["REFERENCE ROBOT"]
+        ESP["ESP32"]
+        DRIVE["Motor Drivers"]
+        AUX["Head / Buzzer"]
+        SENSORS["Sensors"]
 
-## Repository Structure
+        ESP --> DRIVE
+        ESP --> AUX
+        SENSORS --> ESP
+    end
 
-    robotics-platform/
-    ├── docs/
-    ├── scripts/
-    ├── templates/
-    │   ├── desktop/
-    │   └── ros2/
-    │       └── robot_template/
-    ├── README.md
-    ├── LICENSE
-    └── .gitignore
+    MOTOR -->|"UDP 4210<br/>FL, FR, RL, RR"| ESP
+    PERIPH -->|"UDP 4212<br/>HEAD / BUZZ"| ESP
+    ESP -->|"UDP 4211<br/>Telemetry"| PERIPH
+```
 
-The templates directory contains actual starting files for new robots.
+The important boundary is between **ROS 2 interfaces** and **hardware implementation**.
 
-## Robot Implementations
+A future robot does not need to use the same ESP32 firmware, UDP protocol, motor drivers, or sensors. It can implement the same ROS-facing concepts with completely different hardware.
 
-A robot built on this platform should maintain its hardware-specific implementation separately.
+## Current Reference Robot
 
-For example:
+The first robot is a four-wheel mecanum rover using an ESP32-WROOM-32.
 
-    robotics-platform
-            |
-            +---- reference implementation
-                        |
-                        v
-               esp32-mecanum-rover
+### Hardware
 
-The platform should not require a particular motor controller, sensor, microcontroller, wheel configuration, network protocol, or robot geometry.
+* ESP32-WROOM-32
+* 4 × TT gear motors
+* 4 × mecanum wheels
+* 2 × L298N motor drivers
+* SG90 head servo
+* HC-SR04 ultrasonic sensor
+* 5-way TCRT5000L line sensor
+* 2 × IR digital sensors
+* Buzzer
 
-Those details belong to the robot implementation.
+### Motor mapping
 
-## ROS 2
+| Wheel       | IN1 | IN2 |  LEDC |
+| ----------- | --: | --: | ----: |
+| Front Left  |  23 |  25 | 0 / 1 |
+| Front Right |  26 |  27 | 2 / 3 |
+| Rear Left   |  21 |  22 | 4 / 5 |
+| Rear Right  |  18 |  19 | 6 / 7 |
 
-The platform uses ROS 2 as the middleware connecting operator interfaces, robot control, hardware bridges, sensors, and future autonomous behavior.
+## ROS 2 Nodes
 
-Common interfaces include:
+### `rover_control_node`
 
-    /cmd_vel
-    /odom
-    /tf
-    /joint_states
-    /imu
-    /scan
-    /camera/*
+Converts gamepad input into robot commands.
 
-Not every robot needs every interface.
+Current implementation supports:
 
-The platform provides templates and conventions rather than requiring every robot to implement the same hardware.
+* Arcade driving
+* Tank driving
+* Mecanum strafing
+* Deadman control
+* Turbo mode
+* Tank-mode toggle
+* Head swivel commands
+* Buzzer commands
 
-## Templates
+ROS interfaces:
 
-The ROS 2 template provides three initial boundaries:
+```text
+/joy
+    ↓
+rover_control_node
+    ├── /cmd_vel
+    ├── /head/angle
+    └── /buzzer/beep
+```
 
-    joy
-     |
-     v
-    robot_control_node
-     |
-     v
-    /cmd_vel
-     |
-     v
-    robot_motor_bridge
-     |
-     v
-    Drive Hardware
+The control logic is currently rover/controller-specific, but the general pattern is reusable.
 
-Non-drive hardware is handled separately:
+### `rover_motor_bridge`
 
-    ROS 2
-     |
-     v
-    robot_peripherals_bridge
-     |
-     +---- head / actuators
-     +---- buzzer
-     +---- sensors
-     +---- telemetry
+Converts `/cmd_vel` into the rover's hardware-specific drive protocol.
 
-These are starting points. A robot implementation can replace or extend them when its requirements differ.
+Current implementation:
 
-## Development Philosophy
+```text
+/cmd_vel
+    ↓
+mecanum kinematics
+    ↓
+FL, FR, RL, RR PWM
+    ↓
+UDP 4210
+    ↓
+ESP32
+```
 
-Development follows the hardware-to-software path:
+The ROS `Twist` interface is reusable. The mecanum equations, PWM conversion, UDP protocol, and ESP32 implementation are specific to this rover.
 
-    Hardware
-       ↓
-    Firmware
-       ↓
-    Networking
-       ↓
-    ROS 2
-       ↓
-    Operator Interface
-       ↓
-    Higher-Level Behavior
+### `rover_peripherals_bridge`
 
-Each layer should remain independently testable where practical.
+Handles non-drive robot functions.
 
-Hardware-specific details should stay out of the generic platform whenever possible.
+Current implementation:
 
-## Future Integration
+```text
+/head/angle ────────┐
+                    ├── rover_peripherals_bridge ── UDP 4212 ──→ ESP32
+/buzzer/beep ───────┘
 
-The platform is intended to support higher-level integrations such as:
+ESP32 ── UDP 4211 ──→ rover_peripherals_bridge
+                           ├── /ultrasonic/range
+                           └── /rover/telemetry_raw
+```
 
-- robot feedback and odometry
-- sensor visualization
-- autonomous behavior
-- multi-robot operation
-- home automation integration
-- MQTT-based system integration
+This is the reference implementation of the platform's **peripheral interface pattern**.
 
-These are future capabilities rather than requirements for a basic robot.
+The current UDP commands and telemetry format are rover-specific.
 
-## Reference Implementation
+## Reusable vs Robot-Specific
 
-The ESP32 mecanum rover serves as the current reference implementation.
+The project intentionally separates reusable architecture from the implementation of the current robot.
 
-It demonstrates:
+### Reusable concepts
 
-- ROS 2 control
-- wireless robot control
-- ESP32 firmware
-- motor control
-- mecanum drive
-- peripheral integration
-- Steam Deck operation
-- Foxglove integration
+* ROS 2 `Twist` drive interface
+* Gamepad → command-node architecture
+* Autonomous behavior → velocity command architecture
+* Peripheral command topics
+* Sensor topic interfaces
+* Hardware bridge pattern
+* Command timeouts and hardware failsafes
+* ROS 2 visualization/debugging
+* Future velocity multiplexing
+* Future collision monitoring
+* Future multi-robot management
 
-Its hardware and implementation details belong in the rover repository, not in this generic platform repository.
+### Rover-specific implementation
 
-## License
+* ESP32 firmware
+* UDP ports
+* UDP packet formats
+* Mecanum wheel equations
+* Wheel GPIO assignments
+* L298N motor control
+* PWM compensation
+* SG90 head servo
+* HC-SR04
+* TCRT5000L
+* IR sensors
+* Current telemetry string format
+* Current gamepad mapping
 
-See LICENSE.
+The current rover should therefore be treated as a **reference robot**, not as the definition of the entire platform.
+
+## Generic Templates
+
+Reusable architectural templates are kept under:
+
+```text
+templates/
+```
+
+These provide starting points for future robots without forcing them to copy the rover's hardware implementation.
+
+The templates are intentionally incomplete hardware adapters. They define the ROS-facing structure while leaving the robot-specific implementation to the actual robot package.
+
+## Repository
+
+```text
+robotics-platform/
+├── README.md
+│
+├── docs/
+│   ├── architecture-and-roadmap.md
+│   ├── changelog.md
+│   ├── controls.txt
+│   └── ROVER_HANDOFF.md
+│
+├── templates/
+│   ├── README.md
+│   ├── robot_control_node.py
+│   ├── robot_motor_bridge.py
+│   └── robot_peripherals_bridge.py
+│
+├── firmware/
+│   └── esp32-bot/
+│
+├── ros2/
+│   ├── rover_control/
+│   ├── rover_motor_bridge/
+│   ├── rover_peripherals_bridge/
+│   └── rover_description/
+│
+└── scripts/
+```
+
+## Current Status
+
+The reference rover is operational under manual ROS 2 control.
+
+Implemented:
+
+* Steam Deck ROS 2 environment
+* Gamepad input
+* Manual teleoperation
+* Arcade mode
+* Tank mode
+* Mecanum strafing
+* Drive UDP interface
+* ESP32 motor control
+* Motor failsafe
+* Head control
+* Buzzer control
+* Ultrasonic telemetry
+* Basic sensor telemetry
+* Peripheral UDP interface
+* Foxglove ROS 2 integration
+* OTA firmware support
+
+Not yet implemented:
+
+* Encoder feedback
+* Odometry
+* `tf`
+* Autonomous behavior
+* Velocity multiplexing
+* Collision monitoring
+* Full sensor visualization/dashboard
+* ROS 2 ↔ MQTT integration
+* Multi-robot management
+
+## Development
+
+ROS 2 workspace:
+
+```text
+~/Robotics/ros2_ws
+```
+
+Build:
+
+```bash
+cd ~/Robotics/ros2_ws
+colcon build --symlink-install
+```
+
+Manual launch:
+
+```bash
+ros2 launch rover_control rover_control.launch.py
+```
+
+```bash
+ros2 run rover_motor_bridge rover_motor_bridge --ros-args \
+    -p max_linear_speed:=1.5 \
+    -p min_pwm:=110
+```
+
+```bash
+ros2 run rover_peripherals_bridge rover_peripherals_bridge
+```
+
+Foxglove connects through the ROS 2 bridge on the Steam Deck.
+
+## Design Principle
+
+The goal is not to build one increasingly complicated rover node.
+
+The goal is to establish a **robot platform** where:
+
+```text
+robot behavior
+      ↓
+ROS 2 interfaces
+      ↓
+robot-specific hardware bridge
+      ↓
+hardware
+```
+
+The current rover proves that architecture with a real robot. Future robots can replace the hardware layer without requiring the entire ROS 2 system to be redesigned.
