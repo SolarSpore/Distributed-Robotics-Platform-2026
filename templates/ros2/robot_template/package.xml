@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_template</name>
+  <version>0.1.0</version>
+  <description>Generic ROS 2 robot platform template.</description>
+
+  <maintainer email="deck@localhost">Robotics Platform</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

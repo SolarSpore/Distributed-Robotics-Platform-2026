@@ -1,0 +1,158 @@
+# Control Architecture
+
+The Robotics Platform separates operator input from robot-specific drive implementation.
+
+## Control Flow
+
+    Operator Input
+          |
+          v
+        /joy
+          |
+          v
+    robot_control_node
+          |
+          v
+       /cmd_vel
+          |
+          v
+    robot_motor_bridge
+          |
+          v
+     Drive Hardware
+
+The control node is responsible for interpreting operator input and producing standard ROS 2 motion commands.
+
+The motor bridge is responsible for translating those motion commands into the robot-specific hardware or network protocol.
+
+## Operator Input
+
+A robot may use:
+
+- Gamepad
+- Keyboard
+- Joystick
+- Touch interface
+- Remote control
+- Autonomous behavior
+
+The platform does not require a specific controller or button mapping.
+
+Controller mappings should be defined by the robot implementation.
+
+## Manual Control
+
+Manual control should normally use standard ROS 2 interfaces where practical.
+
+For mobile robots, `/cmd_vel` is the primary motion command interface.
+
+Typical components include:
+
+- Linear X — forward/reverse motion
+- Linear Y — lateral motion when supported
+- Angular Z — rotation
+
+Robots that do not support a particular motion axis should ignore or constrain that axis appropriately.
+
+## Safety Controls
+
+Manual control should provide a mechanism for immediately commanding zero velocity.
+
+Possible mechanisms include:
+
+- Deadman switch
+- Emergency stop
+- Controller disconnect handling
+- Command timeout
+- Hardware failsafe
+
+Safety behavior belongs at the appropriate layer rather than being implemented solely by the user interface.
+
+The hardware layer should provide an independent failsafe where practical.
+
+## Control Modes
+
+A robot may provide multiple operator control modes.
+
+Examples include:
+
+- Arcade drive
+- Tank drive
+- Mecanum drive
+- Autonomous mode
+- Assisted/manual mode
+
+Mode selection is robot-specific.
+
+The control architecture should keep mode handling separate from the hardware transport whenever practical.
+
+## Autonomous Control
+
+Autonomous behavior should not bypass the robot control architecture unnecessarily.
+
+A typical architecture is:
+
+    Manual Input --------+
+                         |
+                         v
+                    Control / Mode
+                         |
+                         v
+                      /cmd_vel
+                         |
+                         v
+                    Drive Control
+                         |
+                         v
+                   Drive Hardware
+
+Autonomous behavior may become another source of commands while still using the same drive interface.
+
+A future command multiplexer or mode manager can arbitrate between manual, assisted, and autonomous sources.
+
+## Peripherals
+
+Non-drive actuators should remain separate from the drive subsystem.
+
+Examples include:
+
+- Head or camera servos
+- Buzzer
+- Lights
+- Grippers
+- Auxiliary motors
+- Other actuators not responsible for vehicle locomotion
+
+These should normally be handled by the peripherals layer rather than the drive layer.
+
+## Telemetry
+
+Sensor and hardware feedback should flow back through the peripherals or robot feedback layer.
+
+Examples include:
+
+- Distance sensors
+- IMU
+- Battery state
+- Motor state
+- Encoder data
+- Temperature
+- Diagnostic information
+
+Telemetry should use appropriate ROS 2 message types so higher-level software does not need to understand the underlying hardware protocol.
+
+## Robot-Specific Mappings
+
+The following belong in the robot repository rather than this platform repository:
+
+- Specific controller buttons
+- Button combinations
+- Dead zones
+- Turbo behavior
+- Tank/arcade toggle behavior
+- Strafe controls
+- Controller-specific axis numbers
+- Robot-specific speed limits
+- Hardware-specific safety behavior
+
+The platform defines the interfaces and architecture. The robot implementation defines how its hardware and controller are mapped onto those interfaces.

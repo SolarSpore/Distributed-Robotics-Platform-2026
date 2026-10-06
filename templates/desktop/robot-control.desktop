@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Robot Control
+Comment=Launch the robot control system
+Exec=/path/to/robot-repo/scripts/start_robot.sh
+Terminal=true
+Categories=Development;Robotics;

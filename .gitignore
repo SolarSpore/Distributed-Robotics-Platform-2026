@@ -1,0 +1,22 @@
+# ROS 2 workspace build artifacts (not part of this repo's source layout,
+# but listed in case you build directly inside a checkout)
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Pixi / conda envs
+.pixi/
+
+# Steam Deck runtime state (logs, backups, one-off debugging output)
+scripts/logs/
+backup-*/
+old/
+
+# Editors / OS
+.vscode/
+.DS_Store
