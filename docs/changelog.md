@@ -2,6 +2,17 @@
 
 Changes to the generic Robotics Platform architecture, templates, tooling, and documentation.
 
+## 2026-10-18
+
+### Setup guide and documentation
+
+- Added `docs/install_guide.md`: installing Pixi, a ROS 2 Humble workspace and Foxglove on a Steam Deck, using the node templates, and starting a robot from a desktop shortcut.
+- Added `ToolsReadme.md` and updated `template_tools/README.md`.
+- Rewrote `README.md`: added Getting Started, Documentation and Repository Layout sections, and moved the rover-specific sections to the rover repository's README.
+- Renamed `templates/` to `Node-templates/` and updated the path in `docs/architecture-and-roadmap.md`.
+- Added `template_tools/` with `hold_all_wheels.py`, `test_each_wheel.py` and `joy_list_mapper.py`.
+- Removed the rover's start and stop scripts, desktop icons and tools (`scripts/`): they now live in the rover repository.
+
 ## 2026-10-05
 
 ### Architecture

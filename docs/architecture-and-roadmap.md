@@ -270,7 +270,7 @@ The ROS layer should expose useful interfaces without requiring other nodes to k
 The repository contains generic node templates under:
 
 ```text
-templates/
+Node-templates/
 ```
 
 These are architectural starting points rather than complete hardware drivers.
