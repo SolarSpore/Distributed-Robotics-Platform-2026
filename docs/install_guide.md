@@ -122,13 +122,13 @@ Download the Linux amd64 `.deb` package of Foxglove Studio from Foxglove's websi
 ```bash
 ls ~/Downloads/*.deb
 distrobox enter foxglove -- sudo apt update
-distrobox enter foxglove -- sudo apt install -y ~/Downloads/foxglove-studio-*.deb
+distrobox enter foxglove -- sudo apt install -y libasound2t64 ~/Downloads/foxglove-studio*.deb
 distrobox enter foxglove -- bash -c 'dpkg -l | grep -i foxglove; ls /opt/Foxglove | head'
 ```
 
-Expected: a line for `foxglove-studio` and the application's files in `/opt/Foxglove`. If the file name is different, change the `foxglove-studio-*.deb` part.
+Expected: a line for `foxglove-studio` and the application's files in `/opt/Foxglove`. The pattern `foxglove-studio*.deb` matches the downloaded file with or without a version number in its name.
 
-These commands rebuild the container this guide was written on. They have not yet been run from a clean Deck, so report any step that fails.
+These commands match the install records of the container this guide was written on (Ubuntu 24.04, Foxglove Studio 3.1.1). Report any step that fails on a clean Deck.
 
 ### 5c. A launcher for Foxglove Studio
 
