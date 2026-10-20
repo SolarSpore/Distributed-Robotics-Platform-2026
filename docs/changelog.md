@@ -2,6 +2,12 @@
 
 Changes to the generic Robotics Platform architecture, templates, tooling, and documentation.
 
+## 2026-10-19
+
+### Documentation
+
+- Added section 8c to `docs/install_guide.md`: using the desktop icon template in `Node-templates/desktop/`.
+
 ## 2026-10-18
 
 ### Setup guide and documentation

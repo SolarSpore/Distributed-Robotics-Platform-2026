@@ -370,6 +370,18 @@ ls -l ~/Robotics/logs
 tail -n 5 ~/Robotics/logs/robot.log
 ```
 
+### 8c. The icon template in the repository
+
+The repository includes a starting icon, `Node-templates/desktop/robot-control.desktop`. Its `Exec=` line is a placeholder (`/path/to/robot-repo/scripts/start_robot.sh`) and `Terminal=true` makes a terminal window open when you click it, so you can watch the script's output. To use it instead of writing the icon by hand, copy it to the Desktop and point `Exec=` at your start script's full path:
+
+```bash
+cp ~/repos/Distributed-Robotics-Platform-2026/Node-templates/desktop/robot-control.desktop ~/Desktop/MyRobotControls.desktop
+sed -i 's#^Exec=.*#Exec=/home/deck/Robotics/Shortcuts/start_my_robot.sh#' ~/Desktop/MyRobotControls.desktop
+chmod +x ~/Desktop/MyRobotControls.desktop
+```
+
+Change `Name=` to taste, and set `Terminal=false` for a quiet launch like the icon in 8b. The template has no right-click Stop action: copy the `Actions=Stop;` line and the `[Desktop Action Stop]` block from 8b if you want one.
+
 ## 9. Bring-up tools
 
 `template_tools/` has generic scripts for a new robot. Copy them into your robot's folder, edit the SETTINGS block at the top of each file, and run them with the robot on blocks:
