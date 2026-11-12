@@ -37,11 +37,16 @@ flowchart LR
         CONTROL["rover_control_node"]
         MOTOR["rover_motor_bridge"]
         PERIPH["rover_peripherals_bridge"]
+        CAMBR["rover_camera_bridge"]
+        ODOM["rover_odometry (not installed yet)"]
 
         JOY -->|"/joy"| CONTROL
+        JOY -->|"/joy (camera, light and microphone toggles)"| CAMBR
         CONTROL -->|"/cmd_vel"| MOTOR
         CONTROL -->|"/head/angle"| PERIPH
         CONTROL -->|"/buzzer/beep"| PERIPH
+        CONTROL -->|"/cmd_vel"| ODOM
+        PERIPH -->|"rover/telemetry_raw"| ODOM
     end
 
     subgraph ESP["ESP32 ROVER"]
@@ -60,6 +65,20 @@ flowchart LR
     MOTOR -->|"UDP 4210"| MCU
     PERIPH -->|"UDP 4212"| MCU
     MCU -->|"UDP 4211 telemetry"| PERIPH
+
+    subgraph CAMESP["ESP32 CAMERA BOARD"]
+        CAMMCU["ESP32-S3"]
+        CAMERA["Camera"]
+        MIC["Microphone"]
+        LEDS["LED strip"]
+
+        CAMERA --> CAMMCU
+        MIC --> CAMMCU
+        CAMMCU --> LEDS
+    end
+
+    CAMBR -->|"UDP 4214 commands"| CAMMCU
+    CAMMCU -->|"HTTP 81 video, UDP 4213 status, UDP 4215 audio"| CAMBR
 ```
 
 This diagram represents the **current implementation**, not the future autonomous architecture.
@@ -79,6 +98,8 @@ Current responsibilities:
 * Implement deadman behavior
 * Implement turbo mode
 * Toggle tank mode
+* Implement proportional trigger drive (gas, brake, then reverse on the triggers), without a deadman
+* Publish the active drive mode
 * Generate head commands
 * Generate buzzer commands
 
@@ -92,6 +113,7 @@ Publish:
     /cmd_vel
     /head/angle
     /buzzer/beep
+    /drive_mode
 ```
 
 The node is currently tightly coupled to the Steam Deck controller layout and the rover's available control modes.
@@ -151,6 +173,7 @@ Current responsibilities:
 * Receive telemetry
 * Publish ultrasonic range data
 * Publish raw telemetry
+* Publish line sensor topics (`/line_sensor/raw`, `/line_sensor/detected`, `/line_sensor/position`)
 
 Current hardware protocol:
 
@@ -166,6 +189,57 @@ UDP 4211
 This node demonstrates the platform's general peripheral-bridge pattern.
 
 The actual implementation is rover-specific because it knows about the rover's head, buzzer, ultrasonic sensor, and telemetry format.
+
+---
+
+## `rover_camera_bridge`
+
+Current responsibilities:
+
+* Read the camera board's video stream and publish it as `/camera/image/compressed`
+* Switch the camera on and off
+* Publish microphone level and audio, and switch the microphone mode
+* Control the LED strip (colour, mode, brightness, single pixels)
+* Publish the camera board's status line
+* Toggle the camera, lights and microphone from the gamepad D-pad
+
+Current ROS interfaces:
+
+```text
+Publish:
+    /camera/image/compressed
+    /camera/enabled
+    /microphone/level
+    /microphone/audio
+    /leds/state
+
+Services:
+    /camera/enable
+    /microphone/enable
+```
+
+Current hardware protocol:
+
+```text
+HTTP 81   video stream
+UDP 4213  status from the camera board
+UDP 4214  commands: CAM, MIC, LED
+UDP 4215  microphone audio
+```
+
+This bridge is rover-specific in the same way as the others. The gamepad toggles have not yet been confirmed on the real controller.
+
+---
+
+## `rover_odometry` (experimental)
+
+Current responsibilities:
+
+* Read wheel counts from the rover telemetry
+* Use `/cmd_vel` to resolve direction and strafing
+* Publish `/odom`, `/odometry/rear_wheel_speeds` and the `odom` to `base_link` transform
+
+It is written and tested against simulated counts only. It is not installed on the Deck and the rear wheel encoders are not fitted, so it does nothing until the wheel size, counts per turn and wheelbase are set.
 
 ---
 
@@ -246,6 +320,14 @@ flowchart LR
     PERIPH --> HW
     SENSOR --> PERIPH
     PERIPH --> ROS["ROS 2 sensor topics"]
+
+    CAMBR["Camera bridge"]
+    BOARD["Camera board: camera, microphone, LEDs"]
+
+    BEHAVIOR -->|"camera, microphone and LED commands"| CAMBR
+    CAMBR --> BOARD
+    BOARD -->|"video, audio and status"| CAMBR
+    CAMBR --> ROS
 ```
 
 A robot may have:
@@ -286,6 +368,8 @@ They deliberately omit:
 
 The reference rover packages remain the working implementation.
 
+A second template, `Node-templates/ros2/camera_template`, covers a networked camera board: it turns the board's video stream into a ROS 2 image topic. Like the robot template it leaves the network address, ports and message formats as marked placeholders. Its own README explains what to edit.
+
 ---
 
 # Reference Rover Hardware
@@ -324,9 +408,27 @@ rr = linear.x - linear.y + angular.z * wheel_separation / 2
       HEAD,<angle>
       BUZZ,<hz>,<ms>
       RELEASE
+
+4213  Camera board → Network
+      Status line
+
+4214  Deck → Camera board
+      CAM,... | MIC,... | LED,...
+
+4215  Camera board → Deck
+      Microphone audio (only while the microphone streams)
+
+HTTP 81  Camera board → Deck
+      Video stream
+
+(With the rear wheel encoders fitted, the 4211 telemetry also carries wheel counts.)
 ```
 
 These are implementation details of the current rover, not platform-wide requirements.
+
+## Camera board
+
+A second ESP32, a Seeed XIAO ESP32-S3 Sense, carries the camera, a PDM microphone and a strip of seven addressable LEDs. Two IR sensors are planned for it. It has its own firmware and its own bridge, so the main rover board is not involved. The microphone is off by default.
 
 ---
 
@@ -410,18 +512,27 @@ A polished robot-specific sensor dashboard remains future work.
 * Sensor behavior refinement
 * Telemetry improvements
 
-## 9. Encoders & Odometry
+## 9. Camera, Microphone & LEDs
 
-**Status: Planned**
+**Status: In Progress**
 
-* Wheel encoders
-* Wheel state
-* Odometry
-* `/odom`
-* `/tf`
-* `/joint_states`
+* Second ESP32 (a camera board) with its own firmware
+* Video as `/camera/image/compressed`
+* Microphone level and audio topics
+* LED strip control topics
+* Camera, light and microphone toggles on the gamepad (not yet confirmed on the real controller)
+* Camera board heat and video smoothness still to be checked
 
-## 10. Velocity Multiplexing / Autonomy
+## 10. Encoders & Odometry
+
+**Status: In Progress**
+
+* Firmware support for two rear wheel encoders (off until they are fitted)
+* `/odom` and the `odom` to `base_link` transform, from a node that is written and tested against simulated input
+* Encoders not yet fitted, so nothing is calibrated on the real robot
+* `/joint_states` still planned
+
+## 11. Velocity Multiplexing / Autonomy
 
 **Status: Planned**
 
@@ -430,7 +541,7 @@ A polished robot-specific sensor dashboard remains future work.
 * Autonomous behavior node
 * Mode management
 
-## 11. Collision Monitoring
+## 12. Collision Monitoring
 
 **Status: Planned**
 
@@ -438,7 +549,7 @@ A polished robot-specific sensor dashboard remains future work.
 * Emergency stopping
 * Hardware-independent collision layer
 
-## 12. ROS 2 ↔ MQTT Integration
+## 13. ROS 2 ↔ MQTT Integration
 
 **Status: Planned**
 
@@ -452,7 +563,7 @@ Potential uses:
 * Fleet state
 * Higher-level commands
 
-## 13. Multi-Robot Platform
+## 14. Multi-Robot Platform
 
 **Status: Planned**
 

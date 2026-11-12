@@ -59,6 +59,8 @@ The main parts of the repository:
 ├── Node-templates/
 │   ├── ros2/robot_template/          starting ROS 2 package: control node, motor bridge,
 │   │                                 peripherals bridge and a launch file
+│   ├── ros2/camera_template/         camera board bridge template: video stream to a ROS 2
+│   │                                 image topic, with the hardware details left as placeholders
 │   └── desktop/robot-control.desktop desktop shortcut template
 ├── template_tools/                   generic bring-up scripts: wheel tests and controller mappers
 ├── ToolsReadme.md                    index of every tool
@@ -130,13 +132,14 @@ Steam Deck
     ├── Visualization
     └── Hardware bridges
              │
-             │ Wi-Fi / UDP
-             ▼
-          ESP32
-             │
-       ┌─────┼─────┐
-       ▼     ▼     ▼
-    Motors  Sensors  Peripherals
+             │ Wi-Fi / UDP / HTTP
+      ┌──────┴────────────┐
+      ▼                   ▼
+  ESP32 rover        ESP32 camera board
+      │                   │
+ ┌────┼─────┐        ┌────┼─────┐
+ ▼    ▼     ▼        ▼    ▼     ▼
+Motors Sensors Head  Camera  Mic  LEDs
 ```
 
 The network boundary is therefore part of the architecture, but the platform does **not** require every robot to use the same network protocol.
@@ -184,6 +187,8 @@ The platform is developed alongside a working robot: a four-wheel mecanum rover 
 The rover lives in its own repository, with its own README and setup guide covering its hardware, firmware, network protocol, controls and ROS 2 packages. This repository stays focused on the platform: the architecture, the templates, the tools and the setup guide.
 
 The rover's packages follow the same pattern the templates show: a control node, a motor bridge and a peripherals bridge.
+
+The rover also has a second ESP32, a camera board with a microphone and an LED strip, with its own bridge package on the Steam Deck. It is also where wheel odometry is being tried: that code is written and tested against simulated input, but the wheel encoders are not fitted yet.
 
 ---
 
@@ -274,6 +279,8 @@ The reference rover packages then provide the working, hardware-specific impleme
 
 The [setup guide](docs/install_guide.md) shows how to copy the template package, rename it, edit the nodes and build it.
 
+A second template, `Node-templates/ros2/camera_template`, covers a networked camera board: it turns the board's video stream into a ROS 2 image topic. Like the robot template it leaves the network address, ports and message formats as marked placeholders. Its own README explains what to edit.
+
 ---
 
 # Future Command Architecture
@@ -327,6 +334,14 @@ flowchart LR
     PERIPH --> HW
     SENSOR --> PERIPH
     PERIPH --> ROS["ROS 2 sensor topics"]
+
+    CAMBR["Camera bridge"]
+    BOARD["Camera board: camera, microphone, LEDs"]
+
+    BEHAVIOR -->|"camera, microphone and LED commands"| CAMBR
+    CAMBR --> BOARD
+    BOARD -->|"video, audio and status"| CAMBR
+    CAMBR --> ROS
 ```
 
 A robot may have:
@@ -426,18 +441,27 @@ A polished robot-specific sensor dashboard remains future work.
 * Sensor behavior refinement
 * Telemetry improvements
 
-## 9. Encoders & Odometry
+## 9. Camera, Microphone & LEDs
 
-**Status: Planned**
+**Status: In Progress**
 
-* Wheel encoders
-* Wheel state
-* Odometry
-* `/odom`
-* `/tf`
-* `/joint_states`
+* Second ESP32 (a camera board) with its own firmware
+* Video as `/camera/image/compressed`
+* Microphone level and audio topics
+* LED strip control topics
+* Camera, light and microphone toggles on the gamepad (not yet confirmed on the real controller)
+* Camera board heat and video smoothness still to be checked
 
-## 10. Velocity Multiplexing / Autonomy
+## 10. Encoders & Odometry
+
+**Status: In Progress**
+
+* Firmware support for two rear wheel encoders (off until they are fitted)
+* `/odom` and the `odom` to `base_link` transform, from a node that is written and tested against simulated input
+* Encoders not yet fitted, so nothing is calibrated on the real robot
+* `/joint_states` still planned
+
+## 11. Velocity Multiplexing / Autonomy
 
 **Status: Planned**
 
@@ -446,7 +470,7 @@ A polished robot-specific sensor dashboard remains future work.
 * Autonomous behavior node
 * Mode management
 
-## 11. Collision Monitoring
+## 12. Collision Monitoring
 
 **Status: Planned**
 
@@ -454,7 +478,7 @@ A polished robot-specific sensor dashboard remains future work.
 * Emergency stopping
 * Hardware-independent collision layer
 
-## 12. ROS 2 ↔ MQTT Integration
+## 13. ROS 2 ↔ MQTT Integration
 
 **Status: Planned**
 
@@ -468,7 +492,7 @@ Potential uses include:
 * Fleet state
 * Higher-level commands
 
-## 13. Multi-Robot Platform
+## 14. Multi-Robot Platform
 
 **Status: Planned**
 
@@ -521,6 +545,7 @@ These are intended to be reusable:
 * Hardware-bridge architecture
 * Separation of behavior from hardware
 * Template nodes
+* Camera board bridge template
 * Steam Deck as a ROS 2 robot computer
 * Networked microcontroller architecture
 * Future autonomy/safety command pipeline
@@ -532,11 +557,13 @@ These currently belong specifically to the mecanum rover:
 * Mecanum kinematics
 * ESP32 firmware
 * L298N motor control
-* UDP ports `4210–4212`
+* UDP ports `4210–4215`
 * `FL,FR,RL,RR` packet format
 * Head servo
 * Buzzer
 * Ultrasonic telemetry
+* Camera board, microphone and LED strip
+* Wheel encoder odometry (not fitted yet)
 * Current controller mappings
 
 This distinction is intentional.

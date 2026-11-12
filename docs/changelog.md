@@ -2,6 +2,16 @@
 
 Changes to the generic Robotics Platform architecture, templates, tooling, and documentation.
 
+## 2026-11-11
+
+### Templates
+
+- Added `Node-templates/ros2/camera_template/`: a ROS 2 package template for network camera devices (MJPEG over HTTP), with an optional on/off switch and state feedback.
+
+### Documentation
+
+- Added section 7e to `docs/install_guide.md`: using the camera template.
+
 ## 2026-10-19
 
 ### Documentation

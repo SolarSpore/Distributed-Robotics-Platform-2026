@@ -274,6 +274,26 @@ Set parameters when running a node directly:
 pixi run bash -c "source install/setup.bash && ros2 run $NAME robot_control_node --ros-args -p enable_button:=9 -p axis_linear:=1"
 ```
 
+### 7e. A camera device
+
+If your robot has a network camera (an ESP32 camera board, an IP camera, or anything that serves an MJPEG stream over HTTP), start from the camera template, `Node-templates/ros2/camera_template/`. It turns the stream into a ROS topic that Foxglove can show, and can switch the camera on and off if your device supports that. Its README lists what the device must provide and every setting.
+
+Replace `<repo>` with the folder where you cloned this repository in step 7a, and `my_camera` with your own package name:
+
+```bash
+cp -r <repo>/Node-templates/ros2/camera_template ~/Robotics/ros2_ws/src/my_camera
+cd ~/Robotics/ros2_ws/src/my_camera
+mv camera_template my_camera
+mv resource/camera_template resource/my_camera
+mv launch/camera_template.launch.py launch/my_camera.launch.py
+grep -rl camera_template . | xargs sed -i 's/camera_template/my_camera/g'
+cd ~/Robotics/ros2_ws
+pixi run colcon build --symlink-install --packages-select my_camera
+pixi run ros2 launch my_camera my_camera.launch.py camera_host:=<address of the camera>
+```
+
+Expected: the node logs `Camera stream connected.`, and the picture shows in an Image panel in Foxglove on the topic `/camera/image/compressed`. To start it with everything else, add it to your start script like the other nodes (section 8).
+
 ## 8. Start everything from a desktop shortcut
 
 A shortcut is a `.desktop` file on the Desktop. Its `Exec=` line holds the full path of a script. The script does the work: it calls Pixi by its full path, enters the workspace, and starts each part detached, with one log file per part. One click can start the Foxglove bridge, `joy_node` and your robot's launch file together.
