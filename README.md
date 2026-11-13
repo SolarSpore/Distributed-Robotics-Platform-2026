@@ -1,11 +1,11 @@
 # Distributed ROS 2 Robotics Platform
 
-A **distributed ROS 2 robotics platform** for building and controlling networked robots from a Steam Deck or similar Linux computer.
+A **distributed ROS 2 robotics platform** for building and controlling networked robots, using a **Steam Deck as the robot's main ROS 2 computer**.
 
 The project provides:
 
 * Reusable ROS 2 interfaces for robotics control
-* Template nodes for common robotics-control patterns
+* Template nodes for common robotics-control patterns, including a camera board bridge
 * A hardware-bridge architecture that separates ROS 2 behavior from robot-specific hardware
 * Steam Deck-based robot control and visualization
 * ESP32-based hardware integration
@@ -133,13 +133,15 @@ Steam Deck
     └── Hardware bridges
              │
              │ Wi-Fi / UDP / HTTP
-      ┌──────┴────────────┐
-      ▼                   ▼
-  ESP32 rover        ESP32 camera board
-      │                   │
- ┌────┼─────┐        ┌────┼─────┐
- ▼    ▼     ▼        ▼    ▼     ▼
-Motors Sensors Head  Camera  Mic  LEDs
+             │
+          ┌──┴─────────────────┐
+          │                    │
+          ▼                    ▼
+     ESP32 rover      ESP32 camera board
+          │                    │
+  ┌───────┼─────┐       ┌──────┼────┐
+  ▼       ▼     ▼       ▼      ▼    ▼
+Motors Sensors Head   Camera  Mic  LEDs
 ```
 
 The network boundary is therefore part of the architecture, but the platform does **not** require every robot to use the same network protocol.
@@ -147,6 +149,110 @@ The network boundary is therefore part of the architecture, but the platform doe
 ROS 2 interfaces are intended to be the reusable part.
 
 Hardware protocols remain implementation-specific.
+
+---
+
+# The Steam Deck as the Robot Computer
+
+The platform uses a Steam Deck as the robot's main ROS 2 computer. That is an unusual choice, so it is worth being clear about why it works, what it makes easy, and where it has limits.
+
+## Why a Steam Deck is versatile
+
+A Steam Deck is a complete x86 Linux computer with a screen, a gamepad, Wi-Fi and a battery in one device. A single piece of hardware plays four roles at once:
+
+| Role | What does the job |
+|---|---|
+| **Robot computer** | Runs the ROS 2 nodes, the hardware bridges and Foxglove's data bridge |
+| **Controller** | The built-in gamepad, read through `joy_node` |
+| **Dashboard** | Foxglove Studio on the built-in screen |
+| **Development machine** | Desktop mode gives a full Linux environment for editing and testing |
+
+Nothing has to be mounted on the robot except the microcontrollers that drive the hardware, so the robot itself can stay small, light and cheap.
+
+Because everything above the hardware bridge is ordinary ROS 2, the same Steam Deck can drive a different robot just by running a different set of bridges.
+
+## Pros of this layout
+
+### Modularity
+
+The robot is split into small parts that talk over a network: the ROS 2 computer, one or more microcontroller boards, and a bridge for each board.
+
+* Adding a capability usually means adding **one more board and one more bridge**, without touching the parts that already work
+* Each bridge can be written, tested and replaced on its own
+* A new robot starts from the templates rather than from scratch
+
+The reference rover shows this: the camera board, microphone and LED strip were added as a second ESP32 and a new bridge, and the drive code did not have to change. That is what makes the system **quite easy to keep building on**.
+
+### Form factor
+
+The handheld shape suits driving a robot.
+
+* The controls, the screen and the computer are held in one hand
+* There is no separate laptop, controller or monitor to set up
+* The whole system can be picked up and taken to the robot
+* The screen shows the Foxglove dashboard while you drive
+
+### Power
+
+A Steam Deck has far more processing power than a microcontroller, and enough to run a full ROS 2 desktop installation.
+
+* It runs ROS 2 Humble, Foxglove and video decoding side by side
+* There is headroom for heavier work later, such as autonomy and mapping
+* The microcontrollers only have to do the real-time hardware work, so their firmware stays simple
+
+### Replaceable parts
+
+The ROS 2 interfaces stay the same while the hardware underneath changes. A different microcontroller or a different robot only needs a new bridge. The computer itself could also be swapped for any Linux machine that runs ROS 2.
+
+### Nothing system-wide
+
+Everything is installed in the home folder through Pixi, so a SteamOS update does not break the setup.
+
+## Cons and limits
+
+### It depends on the network
+
+The computer and the robot are connected over Wi-Fi, so range, interference and delay all matter. The hardware failsafes live on the microcontrollers for this reason: the robot stops by itself if commands stop arriving.
+
+### Video and audio share that link
+
+A camera stream uses a lot of bandwidth next to the drive commands. How smooth the video stays while driving has not been measured yet.
+
+### One computer is a single point of failure
+
+If the Steam Deck goes to sleep, runs out of battery or crashes, the whole control side stops.
+
+### It is not on the robot
+
+The robot cannot run its own behaviors if the Steam Deck is out of range or switched off, so true onboard autonomy would need a computer on the robot.
+
+### No real-time guarantees
+
+Timing-critical work has to stay on the microcontrollers, because a general-purpose Linux system and Wi-Fi cannot promise exact timing.
+
+### The links are not authenticated
+
+The simple UDP connections are meant for a trusted home network, not an open one.
+
+### It is a handheld, not a robot part
+
+SteamOS has a read-only system and its own update cycle, and the battery has to last as long as the session.
+
+## At a glance
+
+| | Pros | Cons |
+|---|---|---|
+| **Structure** | Modular: add a board and a bridge without touching what works | More moving parts and more network links |
+| **Hardware** | Handheld, with screen, controls and battery in one device | Not part of the robot; must stay in range and awake |
+| **Computing** | Plenty of power for ROS 2, Foxglove and video | One computer is a single point of failure |
+| **Network** | Simple to wire up: no cables between computer and robot | Wi-Fi delay, range and shared bandwidth |
+| **Safety** | Failsafes on the microcontrollers stop the robot if commands stop | Links are not authenticated |
+
+## Why the trade-off is accepted
+
+These limits are accepted on purpose. The layout trades onboard computing for a robot that is simple to build, easy to extend and quick to get running.
+
+The architecture also keeps the option open to move the ROS 2 computer onto a robot later. The bridges and ROS 2 interfaces would stay the same, because they never depended on where the computer sits.
 
 ---
 
