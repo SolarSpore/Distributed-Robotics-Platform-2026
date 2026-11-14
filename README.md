@@ -124,6 +124,7 @@ For the reference rover:
 ```mermaid
 flowchart TB
     subgraph DECK["STEAM DECK / ROS 2"]
+        direction LR
         JOY["Controller input"]
         CONTROL["Robot control"]
         BRIDGES["Hardware bridges"]
@@ -156,8 +157,8 @@ flowchart TB
         CAMMCU --> LEDS
     end
 
-    BRIDGES -->|"Wi-Fi / UDP"| MCU
-    BRIDGES -->|"Wi-Fi / UDP / HTTP"| CAMMCU
+    DECK -->|"Wi-Fi / UDP"| ROVER
+    DECK -->|"Wi-Fi / UDP / HTTP"| CAMBOARD
 ```
 
 The network boundary is therefore part of the architecture, but the platform does **not** require every robot to use the same network protocol.
