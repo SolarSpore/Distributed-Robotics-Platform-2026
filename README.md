@@ -52,18 +52,18 @@ The main parts of the repository:
 ```text
 .
 ├── docs/
-│   ├── install_guide.md              Steam Deck setup guide
-│   ├── architecture-and-roadmap.md   design notes and roadmap
-│   ├── controls.txt                  controller input to robot commands
-│   └── changelog.md                  dated list of changes
+│   ├── install_guide.md                Steam Deck setup guide
+│   ├── architecture-and-roadmap.md     design notes and roadmap
+│   ├── controls.txt                    controller input to robot commands
+│   └── changelog.md                    dated list of changes
 ├── Node-templates/
-│   ├── ros2/robot_template/          starting ROS 2 package: control node, motor bridge,
-│   │                                 peripherals bridge and a launch file
-│   ├── ros2/camera_template/         camera board bridge template: video stream to a ROS 2
-│   │                                 image topic, with the hardware details left as placeholders
-│   └── desktop/robot-control.desktop desktop shortcut template
-├── template_tools/                   generic bring-up scripts: wheel tests and controller mappers
-├── ToolsReadme.md                    index of every tool
+│   ├── ros2/robot_template/            starting ROS 2 package: control node, motor bridge,
+│   │                                   peripherals bridge and a launch file
+│   ├── ros2/camera_template/           camera board bridge template: video stream to a ROS 2
+│   │                                   image topic, with the hardware details left as placeholders
+│   └── desktop/robot-control.desktop   desktop shortcut template
+├── template_tools/                     generic bring-up scripts: wheel tests and controller mappers
+├── ToolsReadme.md                      index of every tool
 └── LICENSE
 ```
 
@@ -74,7 +74,7 @@ The main parts of the repository:
 The basic idea is to keep **robot behavior and interfaces on the ROS 2 computer**, while allowing the actual robot hardware to be handled by separate microcontrollers and hardware-specific bridges.
 
 ```text
-                    DISTRIBUTED ROS 2 PLATFORM
+                 DISTRIBUTED ROS 2 PLATFORM
                               │
              ┌────────────────┴────────────────┐
              │                                 │
@@ -83,10 +83,10 @@ The basic idea is to keep **robot behavior and interfaces on the ROS 2 computer*
      ┌───────┴────────┐                  ESP32 / MCU
      │                │                  Motor drivers
   Templates       Reference nodes       Sensors / actuators
-     │                │                       │
-     └───────┬────────┘                       │
-             │                                │
-             └──────── Network / Bridge ──────┘
+     │                │                        │
+     └───────┬────────┘                        │
+             │                                 │
+             └──────── Network / Bridge ───────┘
 ```
 
 The Steam Deck acts as the robot's **ROS 2 computer**.
