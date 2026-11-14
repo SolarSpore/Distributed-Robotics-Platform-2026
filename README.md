@@ -121,27 +121,43 @@ The system is distributed across multiple computing devices rather than putting 
 
 For the reference rover:
 
-```text
-Steam Deck
-    │
-    │ ROS 2
-    │
-    ├── Controller input
-    ├── Robot control
-    ├── Command interfaces
-    ├── Visualization
-    └── Hardware bridges
-             │
-             │ Wi-Fi / UDP / HTTP
-             │
-          ┌──┴─────────────────┐
-          │                    │
-          ▼                    ▼
-     ESP32 rover      ESP32 camera board
-          │                    │
-  ┌───────┼─────┐       ┌──────┼────┐
-  ▼       ▼     ▼       ▼      ▼    ▼
-Motors Sensors Head   Camera  Mic  LEDs
+```mermaid
+flowchart TB
+    subgraph DECK["STEAM DECK / ROS 2"]
+        JOY["Controller input"]
+        CONTROL["Robot control"]
+        BRIDGES["Hardware bridges"]
+        FOX["Foxglove visualization"]
+
+        JOY --> CONTROL
+        CONTROL --> BRIDGES
+        BRIDGES -.->|"ROS 2 topics"| FOX
+    end
+
+    subgraph ROVER["ESP32 ROVER"]
+        MCU["ESP32"]
+        MOTORS["Motors"]
+        SENSORS["Sensors"]
+        HEAD["Head"]
+
+        MCU --> MOTORS
+        MCU --> HEAD
+        SENSORS --> MCU
+    end
+
+    subgraph CAMBOARD["ESP32 CAMERA BOARD"]
+        CAMMCU["ESP32-S3"]
+        CAMERA["Camera"]
+        MIC["Microphone"]
+        LEDS["LEDs"]
+
+        CAMERA --> CAMMCU
+        MIC --> CAMMCU
+        CAMMCU --> LEDS
+    end
+
+    BRIDGES -->|"Wi-Fi / UDP"| MCU
+    BRIDGES -->|"Wi-Fi / UDP / HTTP"| CAMMCU
 ```
 
 The network boundary is therefore part of the architecture, but the platform does **not** require every robot to use the same network protocol.
