@@ -2,6 +2,14 @@
 
 Changes to the generic Robotics Platform architecture, templates, tooling, and documentation.
 
+## 2026-11-14
+
+### Documentation
+
+- Added a section on the Steam Deck as the robot computer: why it is versatile, the pros of the layout (modularity, form factor, power), and its cons and limits.
+- Replaced the "Why Distributed?" ASCII chart with a Mermaid diagram, and realigned the "What This Is" diagram and the Repository Layout tree.
+- Added the camera board and the camera template to the architecture diagrams, the roadmap and the reference-rover lists.
+
 ## 2026-11-11
 
 ### Templates
